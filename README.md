@@ -1,3 +1,3 @@
 # Neurotechnologies Lab Project Template
 
-### Template for the Neurotechnologies lab. It gives the student the resources needed to develop a BCI application.
+### Template for the Neurotechnologies lab. It aims to give the student the resources necessary for developing a BCI application in Unity.
