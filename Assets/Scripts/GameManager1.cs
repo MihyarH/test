@@ -1,14 +1,14 @@
-// GameManager.cs (Full Version - Click Input + Score)
+﻿
 using UnityEngine;
 using System.Collections;
-using System.Collections.Generic; // Required for Lists
-using UnityEngine.UI;             // Required for UI elements (Image, Button)
-using TMPro;                      // Required for TextMeshProUGUI
+using System.Collections.Generic; 
+using UnityEngine.UI;            
+using TMPro;
+using Gtec.UnityInterface;                    
 
-// Make sure this script is attached to an empty GameObject, e.g., named "GameManager".
 public class GameManager : MonoBehaviour
 {
-    // --- Game Settings (Editable in Inspector) ---
+    // --- Game Settings 
     [Header("Game Settings")]
     [Tooltip("Number of columns in the grid")]
     public int gridColumns = 3;
@@ -19,9 +19,9 @@ public class GameManager : MonoBehaviour
     [Tooltip("Seconds to display Correct/Wrong feedback")]
     public float feedbackTime = 1.5f;
     [Tooltip("Points awarded for a correct answer")]
-    public int pointsPerCorrect = 1;
+    public int pointsPerCorrect = 10;
 
-    // --- Prefabs & Scene References (MUST Assign in Inspector!) ---
+    // --- Prefabs & Scene References 
     [Header("Assign in Inspector")]
     [Tooltip("The GridCell prefab (UI Button or UI Image with GridCell script)")]
     public GameObject gridCellPrefab;
@@ -35,8 +35,11 @@ public class GameManager : MonoBehaviour
     public Image cueImage;
     [Tooltip("The TextMeshProUGUI element used for status messages")]
     public TextMeshProUGUI statusText;
-    [Tooltip("The TextMeshProUGUI element used to display the score")] // <<< ADDED
-    public TextMeshProUGUI scoreText; // <<< ADDED
+    [Tooltip("The TextMeshProUGUI element used to display the score")] 
+    public TextMeshProUGUI scoreText;
+
+    public Sprite darkSprite;
+    public Sprite flashSprite;
 
     // --- Game State ---
     private enum GameState { Initializing, Memorize, Recall, Feedback, GameOver }
@@ -50,6 +53,8 @@ public class GameManager : MonoBehaviour
     private Coroutine runningRoundCoroutine = null; // To manage stopping/starting rounds cleanly
     private int score = 0; // <<< ADDED Score variable
 
+    private ERPFlashController2D bCIManager;
+
     // --- Unity Lifecycle Methods ---
     void Start()
     {
@@ -61,6 +66,8 @@ public class GameManager : MonoBehaviour
             this.enabled = false; // Disable this script
             return;
         }
+
+        bCIManager = GameObject.FindAnyObjectByType<ERPFlashController2D>();
 
         // Start the first round
         StartNewGame();
@@ -105,7 +112,7 @@ public class GameManager : MonoBehaviour
                 {
                     Debug.LogError($"GameManager Error: Symbol Sprites list contains a null entry at index {i}!", this);
                     isValid = false;
-                    break; // Stop checking after first null
+                    break;
                 }
             }
         }
@@ -116,8 +123,8 @@ public class GameManager : MonoBehaviour
 
     void StartNewGame()
     {
-        score = 0; // <<< ADDED Reset score
-        UpdateScoreDisplay(); // <<< ADDED Update display
+        score = 0; 
+        UpdateScoreDisplay();
 
         // Stop any previous round coroutine to prevent overlaps
         if (runningRoundCoroutine != null)
@@ -134,8 +141,8 @@ public class GameManager : MonoBehaviour
     {
         currentState = GameState.Initializing;
         statusText.text = "Initializing...";
-        cueImage.gameObject.SetActive(false); // Hide cue image
-        ClearGrid(); // Clear previous cells
+        cueImage.gameObject.SetActive(false);
+        ClearGrid();
 
         // Phase 1: Setup Grid
         GenerateGrid();
@@ -156,7 +163,7 @@ public class GameManager : MonoBehaviour
         // Phase 3: Hide and Prepare Recall
         FlipAllCellsToHidden();
         PrepareRecallPhase();
-        yield return null; // Wait a frame
+        yield return null;
 
         // Phase 4: Recall (Wait for player input via OnCellSelected)
         currentState = GameState.Recall;
@@ -168,7 +175,6 @@ public class GameManager : MonoBehaviour
         }
         // The coroutine now waits until OnCellSelected is called by a cell's click event
 
-        // --- Coroutine pauses here until OnCellSelected runs ---
     }
 
 
@@ -186,38 +192,64 @@ public class GameManager : MonoBehaviour
             }
             Destroy(child.gameObject);
         }
-        gridCells.Clear(); // Clear the list
-        cellSymbolMap.Clear(); // Clear the symbol mapping
+        gridCells.Clear();
+        cellSymbolMap.Clear(); 
     }
 
     void GenerateGrid()
     {
         int cellCount = gridColumns * gridRows;
-        gridCells = new List<GridCell>(cellCount); // Initialize list with capacity
+        gridCells = new List<GridCell>(cellCount);
 
-        for (int i = 0; i < cellCount; i++)
+        float cellSize = 50f;
+        float spacing = 200f;
+        Vector2 startPos = new Vector2(-((gridColumns - 1) * spacing) / 2f, ((gridRows - 1) * spacing) / 2f);
+
+        for (int row = 0; row < gridRows; row++)
         {
-            // Instantiate the prefab as a child of the GridPanel
-            GameObject cellGO = Instantiate(gridCellPrefab, gridPanel);
-            cellGO.name = "GridCell_" + i; // Helpful for debugging
+            for (int col = 0; col < gridColumns; col++)
+            {
+                int i = row * gridColumns + col;
 
-            GridCell cell = cellGO.GetComponent<GridCell>();
-            if (cell != null)
-            {
-                cell.cellID = i;
-                // Subscribe our OnCellSelected method to the cell's click event
-                // This is the crucial link for click input!
-                cell.OnCellClicked.AddListener(OnCellSelected);
-                gridCells.Add(cell); // Add to our list
-            }
-            else
-            {
-                // This should not happen if validation passed, but good to keep
-                Debug.LogError($"GameManager: GridCell component not found on instantiated prefab instance {i}!", cellGO);
-                Destroy(cellGO); // Destroy invalid instance
+                GameObject cellGO = Instantiate(gridCellPrefab, gridPanel);
+                cellGO.name = "GridCell_" + i;
+
+                // Make cell larger
+                cellGO.transform.localScale = new Vector3(cellSize, cellSize, 1f);
+
+                // Set position in grid
+                Vector2 position = new Vector2(startPos.x + col * spacing, startPos.y - row * spacing);
+                cellGO.transform.localPosition = position;
+
+                // Create and assign BCI flash object
+                ERPFlashObject2D bci_object = new ERPFlashObject2D
+                {
+                    ClassId = i + 1,
+                    GameObject = cellGO,
+                    DarkSprite = darkSprite,
+                    FlashSprite = flashSprite,
+                    Rotate = false
+                };
+
+                bCIManager.ApplicationObjects.Add(bci_object);
+
+                GridCell cell = cellGO.GetComponent<GridCell>();
+                if (cell != null)
+                {
+                    cell.cellID = i;
+                    cell.OnCellClicked.AddListener(OnCellSelected);
+                    gridCells.Add(cell);
+                }
+                else
+                {
+                    Debug.LogError($"GameManager: GridCell component not found on instantiated prefab instance {i}!", cellGO);
+                    Destroy(cellGO);
+                }
             }
         }
     }
+
+
 
     void AssignSymbols()
     {
@@ -236,14 +268,13 @@ public class GameManager : MonoBehaviour
         }
 
         // Assign the first N shuffled symbols to the cells
-        cellSymbolMap.Clear(); // Ensure map is empty before assigning
+        cellSymbolMap.Clear(); 
         for (int i = 0; i < gridCells.Count; i++)
         {
-            // Ensure we don't go out of bounds of the shuffled list
+  
             if (i < availableSymbols.Count)
             {
                 gridCells[i].currentSymbol = availableSymbols[i]; // Store the symbol internally in the cell script
-                // gridCells[i].SetSprite(availableSymbols[i]); // Don't set sprite here yet, done in Memorize phase start
                 cellSymbolMap.Add(gridCells[i].cellID, availableSymbols[i]); // Store the correct mapping (Cell ID -> Symbol)
             }
             else
@@ -252,7 +283,7 @@ public class GameManager : MonoBehaviour
                 Debug.LogError($"GameManager AssignSymbols: Ran out of symbols to assign at index {i}. Grid size might be larger than symbol list.");
                 // Assign hidden sprite or handle error appropriately
                 gridCells[i].SetSprite(hiddenSprite);
-                gridCells[i].currentSymbol = hiddenSprite; // Assign something non-null
+                gridCells[i].currentSymbol = hiddenSprite;
             }
         }
     }
@@ -267,7 +298,7 @@ public class GameManager : MonoBehaviour
 
     void PrepareRecallPhase()
     {
-        // Make sure we have symbols mapped before picking one
+
         if (cellSymbolMap.Count == 0)
         {
             Debug.LogError("GameManager: Cannot start Recall phase, no symbols were mapped!");
@@ -284,12 +315,11 @@ public class GameManager : MonoBehaviour
 
         // Display the cue symbol
         cueImage.sprite = currentCueSymbol;
-        cueImage.gameObject.SetActive(true); // Make it visible
+        cueImage.gameObject.SetActive(true); 
     }
 
     // --- Input Handling ---
 
-    // This method is called DIRECTLY by the GridCell's OnCellClicked event when it's clicked
     void OnCellSelected(int selectedCellID)
     {
         // Only process clicks during the Recall phase
@@ -302,7 +332,7 @@ public class GameManager : MonoBehaviour
         Debug.Log($"Player clicked Cell ID: {selectedCellID}. Target was: {targetCellID}");
 
         // --- Selection Processed ---
-        currentState = GameState.Feedback; // Move to feedback state immediately
+        currentState = GameState.Feedback;
 
         // Disable further interaction on all cells
         foreach (GridCell cell in gridCells)
@@ -327,7 +357,7 @@ public class GameManager : MonoBehaviour
             if (correctCell != null)
             {
                 correctCell.SetSprite(correctCell.currentSymbol);
-                // Optional: Add a visual distinction (e.g., green border on correct, red on selected)
+         
             }
         }
 
@@ -339,15 +369,15 @@ public class GameManager : MonoBehaviour
     IEnumerator FeedbackPhase(bool correct)
     {
         // State is already set to Feedback in OnCellSelected
-        cueImage.gameObject.SetActive(false); // Hide cue image
+        cueImage.gameObject.SetActive(false);
 
         if (correct)
         {
             statusText.text = "Correct!";
-            score += pointsPerCorrect; // <<< ADDED Increment score
-            UpdateScoreDisplay(); // <<< ADDED Update display
+            score += pointsPerCorrect; 
+            UpdateScoreDisplay(); 
             Debug.Log($"Selection Correct! Score: {score}");
-            // Optional: Add visual feedback like particle effects or color changes
+ 
         }
         else
         {
@@ -360,7 +390,7 @@ public class GameManager : MonoBehaviour
         yield return new WaitForSeconds(feedbackTime);
 
         // --- End of Round ---
-        // Decide what happens next (e.g., start a new round, increase difficulty, check game over conditions)
+    
 
         // For now, just start a new round
         Debug.Log("Starting next round...");
@@ -370,7 +400,7 @@ public class GameManager : MonoBehaviour
     // --- UI Update ---
 
     // Updates the score text UI element
-    void UpdateScoreDisplay() // <<< ADDED Method
+    void UpdateScoreDisplay()
     {
         if (scoreText != null)
         {
@@ -379,7 +409,7 @@ public class GameManager : MonoBehaviour
         else
         {
             // This check prevents errors if the scoreText wasn't assigned,
-            // but the ValidateSettings should catch this earlier.
+      
             Debug.LogWarning("GameManager: Score Text UI element not assigned in Inspector.");
         }
     }

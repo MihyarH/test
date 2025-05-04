@@ -7,6 +7,7 @@ public class ClassSelectionAvailableExample : MonoBehaviour
 {
     private uint _selectedClass = 0;
     private bool _update = false;
+
     void Start()
     {
         //attach to class selection available event
